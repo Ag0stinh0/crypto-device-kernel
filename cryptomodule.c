@@ -21,8 +21,8 @@ static int majorNumber;                     ///< Stores the device number -- det
 static char message[256] = {0};             ///< Memory for the string that is passed from userspace
 static short size_of_message;               ///< Used to remember the size of the string stored
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
-static struct class *ebbcharClass = NULL;   ///< The device-driver class struct pointer
-static struct device *ebbcharDevice = NULL; ///< The device-driver device struct pointer
+static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
+static struct device *cryptoDevice = NULL; ///< The device-driver device struct pointer
 
 //receber por parametros
 
@@ -55,19 +55,19 @@ static struct file_operations fops =
  *  @return returns 0 if successful
  */
 
-static int __init ebbchar_init(void)
+static int __init crypto_init(void)
 {
     printk(KERN_INFO "CryptoModule: modulo crypto inicializado com a chave: %s.\n", key);
 }
 
-static void __exit ebbchar_exit(void)
+static void __exit crypto_exit(void)
 {
-    //device_destroy(ebbcharClass, MKDEV(majorNumber, 0)); // remove the device
-    //class_unregister(ebbcharClass);                      // unregister the device class
-    //class_destroy(ebbcharClass);                         // remove the device class
+    //device_destroy(cryptoClass, MKDEV(majorNumber, 0)); // remove the device
+    //class_unregister(cryptoClass);                      // unregister the device class
+    //class_destroy(cryptoClass);                         // remove the device class
     //unregister_chrdev(majorNumber, DEVICE_NAME);         // unregister the major number
-    printk(KERN_INFO "CryptoModule: bjunda, ate mais!\n");
+    printk(KERN_INFO "CryptoModule: modulo crypto encerrado com sucesso!\n");
 }
 
-module_init(ebbchar_init);
-module_exit(ebbchar_exit);
+module_init(crypto_init);
+module_exit(crypto_exit);
