@@ -1,5 +1,5 @@
 #include <linux/init.h> // Macros used to mark up functions e.g. __init __exit
-#include <linux/module.h> // Core header for loading LKMs into the kernel   
+#include <linux/module.h> // Core header for loading LKMs into the kernel
 #include <linux/device.h> // Header to support the kernel Driver Model
 #include <linux/crypto.h>
 #include <linux/kernel.h>  // Contains types, macros, functions for the kernel
@@ -13,7 +13,7 @@
 MODULE_LICENSE("GPL");                                                ///< The license type -- this affects available functionality
 MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                                  ///< The author -- visible when you use modinfo
 MODULE_DESCRIPTION("Modulo de Linux para cryptografar uma mensagem"); ///< The description -- see modinfo
-MODULE_VERSION("0.1");   
+MODULE_VERSION("0.1");
 
 static char *key = "0123456789ABCDEF";
 
@@ -24,21 +24,17 @@ static int numberOpens = 0;                 ///< Counts the number of times the 
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
 static struct device *cryptoDevice = NULL; ///< The device-driver device struct pointer
 
-//receber por parametros
-
+// Parameters
 module_param(key, charp, 0000);
 MODULE_PARM_DESC(key, "Chave para cryptografia");
 
-// The prototype functions for the character driver -- must come before the struct definition
+// The prototype functions for the character driver
 static int dev_open(struct inode *, struct file *);
 static int dev_release(struct inode *, struct file *);
 static ssize_t dev_read(struct file *, char *, size_t, loff_t *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 
-/** @brief Devices are represented as file structure in the kernel. The file_operations structure from
- *  /linux/fs.h lists the callback functions that you wish to associated with your file operations
- *  using a C99 syntax structure. char devices usually implement open, read, write and release calls
- */
+// File Struct
 static struct file_operations fops =
     {
         .open = dev_open,
@@ -47,13 +43,7 @@ static struct file_operations fops =
         .release = dev_release,
 };
 
-/** @brief The LKM initialization function
- *  The static keyword restricts the visibility of the function to within this C file. The __init
- *  macro means that for a built-in driver (not a LKM) the function is only used at initialization
- *  time and that it can be discarded and its memory freed up after that point.
- *  @return returns 0 if successful
- */
-
+// Module init
 static int __init crypto_init(void)
 {
     majorNumber = register_chrdev(0, DEVICE_NAME, &fops);
@@ -62,14 +52,14 @@ static int __init crypto_init(void)
         return majorNumber;
     }
 
-    cryptoClass = class_create(THIS_MODULE, DEVICE_NAME); //Registra a classe do device
+    cryptoClass = class_create(THIS_MODULE, DEVICE_NAME); // Class creation
     if (IS_ERR(cryptoClass)){                // Check for error and clean up if there is
       unregister_chrdev(majorNumber, DEVICE_NAME);
       printk(KERN_ALERT "Failed to register device class\n");
       return PTR_ERR(cryptoClass);          // Correct way to return an error on a pointer
     }
 
-    cryptoDevice = device_create(cryptoClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME); //Registra a device do driver
+    cryptoDevice = device_create(cryptoClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME); // Device Driver creation
     if (IS_ERR(cryptoDevice)){               // Clean up if there is an error
         class_destroy(cryptoClass);           // Repeated code but the alternative is goto statements
         unregister_chrdev(majorNumber, DEVICE_NAME);
@@ -100,7 +90,7 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
    int error_count = 0;
    // copy_to_user has the format ( * to, *from, size) and returns 0 on success
    error_count = copy_to_user(buffer, message, size_of_message);
- 
+
    if (error_count==0){            // if true then have success
       printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
       return (size_of_message=0);  // clear the position to the start and return 0
