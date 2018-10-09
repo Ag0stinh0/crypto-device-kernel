@@ -8,8 +8,8 @@
 
 #define HASH_LENGTH (256/8) //Size of hash256
 
-static plaintext[HASH_LENGTH * 2 + 1]; //String received in command line
-module_param(plaintext, charp, 0);
+static plaintext[HASH_LENGTH * 2 + 1]; //String received in command line // O TEXTO PRECISA SER PEGO NO ARQUIVO
+module_param(plaintext, charp, 0); // RETIRAR ESSA LINHA
 
 static void show_hash(char *hash_text){
     int i;
