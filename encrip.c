@@ -8,17 +8,17 @@
 #define C_WORD "Testing"         // Palavra a ser encriptada
 
 struct tcrypt_result {
- struct completion completion;
- int err;
+    struct completion completion;
+    int err;
 };
 struct skcipher_def {
- struct scatterlist sg;
- struct crypto_skcipher * tfm;
- struct skcipher_request * req;
- struct tcrypt_result result;
- char * scratchpad; // Palavra a ser encriptada
- char * ciphertext;
- char * ivdata;
+    struct scatterlist sg;
+    struct crypto_skcipher * tfm;
+    struct skcipher_request * req;
+    struct tcrypt_result result;
+    char * scratchpad; // Palavra a ser encriptada
+    char * ciphertext;
+    char * ivdata;
 };
 static struct skcipher_def sk;
 static void test_skcipher_finish(struct skcipher_def * sk)
@@ -151,4 +151,3 @@ void cryptoapi_exit(void)
 }
 module_init(cryptoapi_init);
 module_exit(cryptoapi_exit);
-
