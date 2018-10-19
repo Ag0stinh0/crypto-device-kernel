@@ -24,7 +24,7 @@ MODULE_VERSION("0.1");
 static char *key;
 
 static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[256 * 2 + 1] = "41663c2c";             ///< Memory for the string that is passed from userspace (plaintext)
+static char message[256 * 2 + 1] = "123321";             ///< Memory for the string that is passed from userspace (plaintext)
 static short size_of_message;               ///< Used to remember the size of the string stored
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
@@ -131,7 +131,9 @@ static int test_skcipher_encrypt(char * plaintext, char * password, struct skcip
             goto out;
         }
     }
-    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skcipher_callback,&sk->result);
+    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+    test_skcipher_callback,
+    &sk->result);
 
     memset((void*)key,'\0',SYMMETRIC_KEY_LENGTH);
 
@@ -144,7 +146,8 @@ static int test_skcipher_encrypt(char * plaintext, char * password, struct skcip
         ret = -EAGAIN;
         goto out;
     }
-
+    pr_info("Symmetric key: %s\n", key);   //Sujeito a remoção
+    pr_info("Plaintext: %s\n", plaintext); //Sujeito a remoção
     if (!sk->ivdata) {
 
         sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
@@ -185,113 +188,6 @@ void encrypt_create(void)
     sk.ciphertext = NULL;
     sk.ivdata = NULL;
     test_skcipher_encrypt(message, password, &sk);
-}
-
-// AES Decryption
-static int test_skdecipher_result(struct skcipher_def * sk, int rc)
-{
-    switch (rc) {
-        case 0:
-            break;
-        case -EINPROGRESS:
-        case -EBUSY:
-            rc = wait_for_completion_interruptible(&sk->result.completion);
-            if (!rc && !sk->result.err) {
-                reinit_completion(&sk->result.completion);
-                break;
-            }
-        default:
-            pr_info("skcipher decrypt returned with %d result %d\n", rc, sk->result.err);
-            break;
-    }
-    init_completion(&sk->result.completion);
-    return rc;
-}
-
-static void test_skdecipher_callback(struct crypto_async_request *req, int error)
-{
-    struct tcrypt_result *result = req->data;
-    int ret;
-    if (error == -EINPROGRESS)
-    return;
-    result->err = error;
-    complete(&result->completion);
-    pr_info("Decryption finished successfully\n");
-}
-
-static int test_skcipher_decrypt(char * plaintext, char * password, struct skcipher_def * sk)
-{
-    int ret = -EFAULT;
-    unsigned char key[SYMMETRIC_KEY_LENGTH];
-    if (!sk->tfm) {
-        sk->tfm = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
-        if (IS_ERR(sk->tfm)) {
-            pr_info("could not allocate skcipher handle\n");
-            return PTR_ERR(sk->tfm);
-        }
-    }
-    if (!sk->req) {
-        sk->req = skcipher_request_alloc(sk->tfm, GFP_KERNEL);
-        if (!sk->req) {
-            pr_info("could not allocate skcipher request\n");
-            ret = -ENOMEM;
-            goto out;
-        }
-    }
-    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skdecipher_callback,&sk->result);
-
-    memset((void*)key,'\0',SYMMETRIC_KEY_LENGTH);
-
-
-    sprintf((char*)key,"%s",password);
-
-    /* AES 256 with given symmetric key */
-    if (crypto_skcipher_setkey(sk->tfm, key, SYMMETRIC_KEY_LENGTH)) {
-        pr_info("key could not be set\n");
-        ret = -EAGAIN;
-        goto out;
-    }
-
-    if (!sk->ivdata) {
-
-        sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->ivdata) {
-            pr_info("could not allocate ivdata\n");
-            goto out;
-        }
-        get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
-    }
-    if (!sk->scratchpad) {
-        /* The text to be encrypted */
-        sk->scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->scratchpad) {
-            pr_info("could not allocate scratchpad\n");
-            goto out;
-        }
-    }
-    sprintf((char*)sk->scratchpad,"%s",plaintext);
-    sg_init_one(&sk->sg, sk->scratchpad, CIPHER_BLOCK_SIZE);
-    skcipher_request_set_crypt(sk->req, &sk->sg, &sk->sg,CIPHER_BLOCK_SIZE, sk->ivdata);
-    init_completion(&sk->result.completion);
-    /* decrypt data */
-    ret = crypto_skcipher_decrypt(sk->req);
-    ret = test_skdecipher_result(sk, ret);
-    if (ret)
-        goto out;
-    pr_info("Decryption request successful: %x\n",&ret);
-    out:
-    return ret;
-}
-
-void decrypt_create(void)
-{
-    char *password = key; // Remover C_PASSWORD para key recebida via parametro
-    sk.tfm = NULL;
-    sk.req = NULL;
-    sk.scratchpad = NULL;
-    sk.ciphertext = NULL;
-    sk.ivdata = NULL;
-    test_skcipher_decrypt(message, password, &sk);
 }
 
 // Hash Functions
