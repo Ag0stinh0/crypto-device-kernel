@@ -107,7 +107,7 @@ static int __init crypto_init(void)
         return PTR_ERR(cryptoDevice);
     }
 
-    hash_create();
+    //hash_create();
     printk(KERN_INFO "CryptoModule: modulo crypto inicializado com a chave: %s.\n", key);
     return 0;
 }
