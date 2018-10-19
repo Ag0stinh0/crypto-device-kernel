@@ -975,6 +975,8 @@ deps_/home/richbitch/Desktop/git/crypto-device-kernel/cryptomodule.o := \
   include/uapi/linux/if_packet.h \
   include/net/flow.h \
   include/crypto/hash.h \
+  include/crypto/internal/skcipher.h \
+  include/crypto/skcipher.h \
 
 /home/richbitch/Desktop/git/crypto-device-kernel/cryptomodule.o: $(deps_/home/richbitch/Desktop/git/crypto-device-kernel/cryptomodule.o)
 
