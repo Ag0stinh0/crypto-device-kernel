@@ -8,19 +8,21 @@
 #define C_WORD "Testing"         // Palavra a ser encriptada
 
 struct tcrypt_result {
- struct completion completion;
- int err;
+    struct completion completion;
+    int err;
 };
+
 struct skcipher_def {
- struct scatterlist sg;
- struct crypto_skcipher * tfm;
- struct skcipher_request * req;
- struct tcrypt_result result;
- char * scratchpad; // Palavra a ser encriptada
- char * ciphertext;
- char * ivdata;
+    struct scatterlist sg;
+    struct crypto_skcipher * tfm;
+    struct skcipher_request * req;
+    struct tcrypt_result result;
+    char * scratchpad; // Palavra a ser encriptada
+    char * ciphertext;
+    char * ivdata;
 };
 static struct skcipher_def sk;
+
 static void test_skcipher_finish(struct skcipher_def * sk)
 {
     if (sk->tfm)
@@ -34,6 +36,7 @@ static void test_skcipher_finish(struct skcipher_def * sk)
     if (sk->ciphertext)
         kfree(sk->ciphertext);
 }
+
 static int test_skcipher_result(struct skcipher_def * sk, int rc)
 {
     switch (rc) {
@@ -55,6 +58,7 @@ static int test_skcipher_result(struct skcipher_def * sk, int rc)
     init_completion(&sk->result.completion);
     return rc;
 }
+
 static void test_skcipher_callback(struct crypto_async_request *req, int error)
 {
     struct tcrypt_result *result = req->data;
@@ -64,26 +68,26 @@ static void test_skcipher_callback(struct crypto_async_request *req, int error)
     result->err = error;
     complete(&result->completion);
     pr_info("Encryption finished successfully\n");
-    }
-static int test_skcipher_encrypt(char * plaintext, char * password,
- struct skcipher_def * sk)
+}
+
+static int test_skcipher_encrypt(char * plaintext, char * password, struct skcipher_def * sk)
 {
     int ret = -EFAULT;
     unsigned char key[SYMMETRIC_KEY_LENGTH];
     if (!sk->tfm) {
         sk->tfm = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
-    if (IS_ERR(sk->tfm)) {
-        pr_info("could not allocate skcipher handle\n");
-        return PTR_ERR(sk->tfm);
-    }
+        if (IS_ERR(sk->tfm)) {
+            pr_info("could not allocate skcipher handle\n");
+            return PTR_ERR(sk->tfm);
+        }
     }
     if (!sk->req) {
         sk->req = skcipher_request_alloc(sk->tfm, GFP_KERNEL);
-    if (!sk->req) {
-        pr_info("could not allocate skcipher request\n");
-    ret = -ENOMEM;
-    goto out;
-    }
+        if (!sk->req) {
+            pr_info("could not allocate skcipher request\n");
+            ret = -ENOMEM;
+            goto out;
+        }
     }
     skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,
     test_skcipher_callback,
@@ -106,18 +110,18 @@ static int test_skcipher_encrypt(char * plaintext, char * password,
 
         sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
         if (!sk->ivdata) {
-        pr_info("could not allocate ivdata\n");
-        goto out;
-    }
-    get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
+            pr_info("could not allocate ivdata\n");
+            goto out;
+        }
+        get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
     }
     if (!sk->scratchpad) {
         /* The text to be encrypted */
         sk->scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-    if (!sk->scratchpad) {
-        pr_info("could not allocate scratchpad\n");
-    goto out;
-    }
+        if (!sk->scratchpad) {
+            pr_info("could not allocate scratchpad\n");
+            goto out;
+        }
     }
     sprintf((char*)sk->scratchpad,"%s",plaintext);
     sg_init_one(&sk->sg, sk->scratchpad, CIPHER_BLOCK_SIZE);
@@ -133,10 +137,10 @@ static int test_skcipher_encrypt(char * plaintext, char * password,
     out:
     return ret;
 }
+
 int cryptoapi_init(void)
 {
-
-    char * password = C_PASSWORD; // Remover C_PASSWORD para key recebida via parametro
+    char *password = C_PASSWORD; // Remover C_PASSWORD para key recebida via parametro
     sk.tfm = NULL;
     sk.req = NULL;
     sk.scratchpad = NULL;
@@ -145,10 +149,10 @@ int cryptoapi_init(void)
     test_skcipher_encrypt(C_WORD, password, &sk); // Remover C_WORD para key recebida via parametro
     return 0;                                      // Mudar o retorno do módulo para a palavra criptografada
 }
+
 void cryptoapi_exit(void)
 {
     test_skcipher_finish(&sk);
 }
 module_init(cryptoapi_init);
 module_exit(cryptoapi_exit);
-
