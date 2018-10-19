@@ -179,7 +179,7 @@ static int test_skcipher_encrypt(char * plaintext, char * password, struct skcip
     return ret;
 }
 
-int cryptoapi_create(void)
+void encrypt_create(void)
 {
     char *password = key; // Remover C_PASSWORD para key recebida via parametro
     sk.tfm = NULL;
@@ -188,7 +188,6 @@ int cryptoapi_create(void)
     sk.ciphertext = NULL;
     sk.ivdata = NULL;
     test_skcipher_encrypt(message, password, &sk);
-
 }
 
 // Hash Functions
@@ -252,7 +251,7 @@ static int __init crypto_init(void)
         return PTR_ERR(cryptoDevice);
     }
 
-    //hash_create();
+    encrypt_create();
     printk(KERN_INFO "CryptoModule: modulo crypto inicializado com a chave: %s.\n", key);
     return 0;
 }
