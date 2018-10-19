@@ -64,7 +64,7 @@ void hash_create(void){
 
     sha256 = crypto_alloc_shash("sha256", 0, 0);
 
-    if( IS_ERR(sha256) ) return -1
+    if( IS_ERR(sha256) ) return -1;
 
     shash = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(sha256), GFP_KERNEL);
 
@@ -74,7 +74,7 @@ void hash_create(void){
     shash->flags = 0;
 
     if( crypto_shash_init(shash) ) return -1;
-    if( crypto_shash_update(shash, message, strlen(plaintext)) ) return -1;
+    if( crypto_shash_update(shash, message, strlen(message)) ) return -1;
     if( crypto_shash_final(shash, hash_sha256) ) return -1;
 
     kfree(shash);
