@@ -147,13 +147,6 @@ static void encrypt_create(void)
     }
     get_random_bytes(ivdata, CIPHER_BLOCK_SIZE);
 
-    /* Input data will be random */
-    scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-    if (!scratchpad) {
-        pr_info("could not allocate scratchpad\n");
-        goto out;
-    }
-
     sk.tfm = skcipher;
     sk.req = req;
 
@@ -169,6 +162,12 @@ static void encrypt_create(void)
 
     pr_info("Encryption triggered successfully: %x\n", sk->result);
     out:
+    if (skcipher)
+        crypto_free_skcipher(skcipher);
+    if (req)
+        skcipher_request_free(req);
+    if (ivdata)
+        kfree(ivdata);
     return ret;
 }
 
