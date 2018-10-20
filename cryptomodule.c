@@ -24,7 +24,7 @@ MODULE_VERSION("0.1");
 static char *key;
 
 static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[256 * 2 + 1] = "41663c2c";             ///< Memory for the string that is passed from userspace (plaintext)
+static char message[256 * 2 + 1] = "123321";             ///< Memory for the string that is passed from userspace (plaintext)
 static short size_of_message;               ///< Used to remember the size of the string stored
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
@@ -55,123 +55,119 @@ struct tcrypt_result {
     int err;
 };
 
+/* tie all data structures together */
 struct skcipher_def {
     struct scatterlist sg;
-    struct crypto_skcipher * tfm;
-    struct skcipher_request * req;
+    struct crypto_skcipher *tfm;
+    struct skcipher_request *req;
     struct tcrypt_result result;
-    char * scratchpad; // Palavra a ser encriptada
-    char * ciphertext;
-    char * ivdata;
 };
-static struct skcipher_def sk;
 
 // AES Encryption
-static void test_skcipher_finish(struct skcipher_def * sk)
-{
-    if (sk->tfm)
-        crypto_free_skcipher(sk->tfm);
-    if (sk->req)
-        skcipher_request_free(sk->req);
-    if (sk->ivdata)
-        kfree(sk->ivdata);
-    if (sk->scratchpad)
-        kfree(sk->scratchpad);
-    if (sk->ciphertext)
-        kfree(sk->ciphertext);
-}
-
-static int test_skcipher_result(struct skcipher_def * sk, int rc)
-{
-    switch (rc) {
-        case 0:
-            break;
-        case -EINPROGRESS:
-        case -EBUSY:
-            rc = wait_for_completion_interruptible(&sk->result.completion);
-            if (!rc && !sk->result.err) {
-                reinit_completion(&sk->result.completion);
-                break;
-            }
-        default:
-            pr_info("skcipher encrypt returned with %d result %d\n", rc, sk->result.err);
-            break;
-    }
-    init_completion(&sk->result.completion);
-    return rc;
-}
-
-static void test_skcipher_callback(struct crypto_async_request *req, int error)
+/* Callback function */
+static void test_skcipher_cb(struct crypto_async_request *req, int error)
 {
     struct tcrypt_result *result = req->data;
-    int ret;
+
     if (error == -EINPROGRESS)
-    return;
+        return;
     result->err = error;
     complete(&result->completion);
     pr_info("Encryption finished successfully\n");
 }
 
-static int test_skcipher_encrypt(char * plaintext, char * password, struct skcipher_def * sk)
+/* Perform cipher operation */
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk,int enc)
 {
+    int rc = 0;
+
+    if (enc)
+        rc = crypto_skcipher_encrypt(sk->req);
+    else
+        rc = crypto_skcipher_decrypt(sk->req);
+
+    switch (rc) {
+    case 0:
+        break;
+    case -EINPROGRESS:
+    case -EBUSY:
+        rc = wait_for_completion_interruptible(
+            &sk->result.completion);
+        if (!rc && !sk->result.err) {
+            reinit_completion(&sk->result.completion);
+            break;
+        }
+    default:
+        pr_info("skcipher encrypt returned with %d result %d\n",
+            rc, sk->result.err);
+        break;
+    }
+    init_completion(&sk->result.completion);
+
+    return rc;
+}
+
+/* Initialize and trigger cipher operation */
+static void encrypt_create(void)
+{
+    struct skcipher_def sk;
+    struct crypto_skcipher *skcipher = NULL;
+    struct skcipher_request *req = NULL;
+    char *ivdata = NULL;
     int ret = -EFAULT;
-    unsigned char key[SYMMETRIC_KEY_LENGTH];
-    if (!sk->tfm) {
-        sk->tfm = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
-        if (IS_ERR(sk->tfm)) {
-            pr_info("could not allocate skcipher handle\n");
-            return PTR_ERR(sk->tfm);
-        }
+
+    skcipher = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
+    if (IS_ERR(skcipher)) {
+        pr_info("could not allocate skcipher handle\n");
+        return PTR_ERR(skcipher);
     }
-    if (!sk->req) {
-        sk->req = skcipher_request_alloc(sk->tfm, GFP_KERNEL);
-        if (!sk->req) {
-            pr_info("could not allocate skcipher request\n");
-            ret = -ENOMEM;
-            goto out;
-        }
+
+    req = skcipher_request_alloc(skcipher, GFP_KERNEL);
+    if (!req) {
+        pr_info("could not allocate skcipher request\n");
+        ret = -ENOMEM;
+        goto out;
     }
-    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skcipher_callback,&sk->result);
 
-    memset((void*)key,'\0',SYMMETRIC_KEY_LENGTH);
+    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
+                      test_skcipher_cb,
+                      &sk.result);
 
-
-    sprintf((char*)key,"%s",password);
-
-    /* AES 256 with given symmetric key */
-    if (crypto_skcipher_setkey(sk->tfm, key, SYMMETRIC_KEY_LENGTH)) {
+    if (crypto_skcipher_setkey(skcipher, key, SYMMETRIC_KEY_LENGTH)) {
         pr_info("key could not be set\n");
         ret = -EAGAIN;
         goto out;
     }
 
-    if (!sk->ivdata) {
+    /* IV will be random */
+    ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
+    if (!ivdata) {
+        pr_info("could not allocate ivdata\n");
+        goto out;
+    }
+    get_random_bytes(ivdata, CIPHER_BLOCK_SIZE);
 
-        sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->ivdata) {
-            pr_info("could not allocate ivdata\n");
-            goto out;
-        }
-        get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
+    /* Input data will be random */
+    scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
+    if (!scratchpad) {
+        pr_info("could not allocate scratchpad\n");
+        goto out;
     }
-    if (!sk->scratchpad) {
-        /* The text to be encrypted */
-        sk->scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->scratchpad) {
-            pr_info("could not allocate scratchpad\n");
-            goto out;
-        }
-    }
-    sprintf((char*)sk->scratchpad,"%s",plaintext);
-    sg_init_one(&sk->sg, sk->scratchpad, CIPHER_BLOCK_SIZE);
-    skcipher_request_set_crypt(sk->req, &sk->sg, &sk->sg,CIPHER_BLOCK_SIZE, sk->ivdata);
-    init_completion(&sk->result.completion);
+
+    sk.tfm = skcipher;
+    sk.req = req;
+
+    /* We encrypt one block */
+    sg_init_one(&sk.sg, message, CIPHER_BLOCK_SIZE);
+    skcipher_request_set_crypt(req, &sk.sg, &sk.sg, CIPHER_BLOCK_SIZE, ivdata);
+    init_completion(&sk.result.completion);
+
     /* encrypt data */
-    ret = crypto_skcipher_encrypt(sk->req);
-    ret = test_skcipher_result(sk, ret);
+    ret = test_skcipher_encdec(&sk, 1);
     if (ret)
         goto out;
-    pr_info("Encryption request successful: %x\n",&ret);
+
+    pr_info("Encryption triggered successfully: %x\n", sk->result);
     out:
     return ret;
 }
@@ -185,113 +181,6 @@ void encrypt_create(void)
     sk.ciphertext = NULL;
     sk.ivdata = NULL;
     test_skcipher_encrypt(message, password, &sk);
-}
-
-// AES Decryption
-static int test_skdecipher_result(struct skcipher_def * sk, int rc)
-{
-    switch (rc) {
-        case 0:
-            break;
-        case -EINPROGRESS:
-        case -EBUSY:
-            rc = wait_for_completion_interruptible(&sk->result.completion);
-            if (!rc && !sk->result.err) {
-                reinit_completion(&sk->result.completion);
-                break;
-            }
-        default:
-            pr_info("skcipher decrypt returned with %d result %d\n", rc, sk->result.err);
-            break;
-    }
-    init_completion(&sk->result.completion);
-    return rc;
-}
-
-static void test_skdecipher_callback(struct crypto_async_request *req, int error)
-{
-    struct tcrypt_result *result = req->data;
-    int ret;
-    if (error == -EINPROGRESS)
-    return;
-    result->err = error;
-    complete(&result->completion);
-    pr_info("Decryption finished successfully\n");
-}
-
-static int test_skcipher_decrypt(char * plaintext, char * password, struct skcipher_def * sk)
-{
-    int ret = -EFAULT;
-    unsigned char key[SYMMETRIC_KEY_LENGTH];
-    if (!sk->tfm) {
-        sk->tfm = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
-        if (IS_ERR(sk->tfm)) {
-            pr_info("could not allocate skcipher handle\n");
-            return PTR_ERR(sk->tfm);
-        }
-    }
-    if (!sk->req) {
-        sk->req = skcipher_request_alloc(sk->tfm, GFP_KERNEL);
-        if (!sk->req) {
-            pr_info("could not allocate skcipher request\n");
-            ret = -ENOMEM;
-            goto out;
-        }
-    }
-    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skdecipher_callback,&sk->result);
-
-    memset((void*)key,'\0',SYMMETRIC_KEY_LENGTH);
-
-
-    sprintf((char*)key,"%s",password);
-
-    /* AES 256 with given symmetric key */
-    if (crypto_skcipher_setkey(sk->tfm, key, SYMMETRIC_KEY_LENGTH)) {
-        pr_info("key could not be set\n");
-        ret = -EAGAIN;
-        goto out;
-    }
-
-    if (!sk->ivdata) {
-
-        sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->ivdata) {
-            pr_info("could not allocate ivdata\n");
-            goto out;
-        }
-        get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
-    }
-    if (!sk->scratchpad) {
-        /* The text to be encrypted */
-        sk->scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->scratchpad) {
-            pr_info("could not allocate scratchpad\n");
-            goto out;
-        }
-    }
-    sprintf((char*)sk->scratchpad,"%s",plaintext);
-    sg_init_one(&sk->sg, sk->scratchpad, CIPHER_BLOCK_SIZE);
-    skcipher_request_set_crypt(sk->req, &sk->sg, &sk->sg,CIPHER_BLOCK_SIZE, sk->ivdata);
-    init_completion(&sk->result.completion);
-    /* decrypt data */
-    ret = crypto_skcipher_decrypt(sk->req);
-    ret = test_skdecipher_result(sk, ret);
-    if (ret)
-        goto out;
-    pr_info("Decryption request successful: %x\n",&ret);
-    out:
-    return ret;
-}
-
-void decrypt_create(void)
-{
-    char *password = key; // Remover C_PASSWORD para key recebida via parametro
-    sk.tfm = NULL;
-    sk.req = NULL;
-    sk.scratchpad = NULL;
-    sk.ciphertext = NULL;
-    sk.ivdata = NULL;
-    test_skcipher_decrypt(message, password, &sk);
 }
 
 // Hash Functions
