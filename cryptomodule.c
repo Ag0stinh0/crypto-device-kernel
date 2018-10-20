@@ -24,7 +24,7 @@ MODULE_VERSION("0.1");
 static char *key;
 
 static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[CIPHER_BLOCK_SIZE] = "81683c40";             ///< Memory for the string that is passed from userspace (plaintext)
+static char message[CIPHER_BLOCK_SIZE];             ///< Memory for the string that is passed from userspace (plaintext)
 static short size_of_message;               ///< Used to remember the size of the string stored
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
@@ -184,6 +184,7 @@ static void show_hash(char *hash_text){
     for(i = 0; i < HASH_LENGTH; i++)
         sprintf(&str[i*2], "%02x", (unsigned char)hash_text[i]);
     str[i*2] = 0;
+    strcpy(message,str);
     pr_info("%s\n", str);
 }
 
@@ -261,7 +262,7 @@ static int dev_open(struct inode *inodep, struct file *filep){
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
    int error_count = 0;
    // copy_to_user has the format ( * to, *from, size) and returns 0 on success
-   error_count = copy_to_user(buffer, message, size_of_message);
+   error_count = copy_to_user(buffer, message, 256/8);
 
    if (error_count==0){            // if true then have success
       printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
@@ -274,10 +275,27 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-   sprintf(message, "%s(%zu letters)", buffer, len);   // appending received string with its length
-   size_of_message = strlen(message);                 // store the length of the stored message
-   printk(KERN_INFO "CryptoModule: Recebeu %zu caracteres do usuario\n", len);
-   return len;
+    char opc = *buffer;
+    char msg = kmalloc(strlen(buffer), GFP_ATOMIC);
+
+    size_of_message = strlen(message);  // store the length of the stored message
+    pr_info("%s\n", message);
+    switch (opc){
+        case 'd':
+
+
+            break;
+        case 'c':
+            break;
+        case 'h':
+            strcpy(msg,buffer);
+            strsep(&msg, " ");
+            strcpy(message,msg);
+            hash_create();
+            break;
+    }
+    hash_create();
+    return len;
 }
 
 static int dev_release(struct inode *inodep, struct file *filep){

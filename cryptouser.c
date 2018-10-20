@@ -19,15 +19,9 @@ int main()
       return errno;
    }
    printf("Type the operation with the plaintext with spaces between:\n");
-   scanf("%c %[^\n]%*c", operation, stringToSend);      // Read in a string (with spaces)
+   scanf("%[^\n]%*c", stringToSend);      // Read in a string (with spaces)
 
-   //codigo do lucas faz a transformers do stringToSend
-
-   strcat(stringResult,operation);
-   strcat(stringResult,' ');
-   strcat(stringResult,stringToSend);
-
-   ret = write(fd, stringResult, strlen(stringResult));    // Send the string to the LKM
+   ret = write(fd, stringToSend, strlen(stringToSend));    // Send the string to the LKM
    if (ret < 0){
       perror("Failed to write the message to the device.");
       return errno;
