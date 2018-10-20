@@ -21,6 +21,8 @@ int main()
    printf("Type the operation with the plaintext with spaces between:\n");
    scanf("%c %[^\n]%*c", operation, stringToSend);      // Read in a string (with spaces)
 
+   //codigo do lucas faz a transformers do stringToSend
+
    strcat(stringResult,operation);
    strcat(stringResult,' ');
    strcat(stringResult,stringToSend);

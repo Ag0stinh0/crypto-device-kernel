@@ -24,7 +24,7 @@ MODULE_VERSION("0.1");
 static char *key;
 
 static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[256 * 2 + 1] = "123321";             ///< Memory for the string that is passed from userspace (plaintext)
+static char message[CIPHER_BLOCK_SIZE] = "81683c40";             ///< Memory for the string that is passed from userspace (plaintext)
 static short size_of_message;               ///< Used to remember the size of the string stored
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
@@ -63,7 +63,6 @@ struct skcipher_def {
     struct tcrypt_result result;
 };
 
-// AES Encryption
 /* Callback function */
 static void test_skcipher_cb(struct crypto_async_request *req, int error)
 {
@@ -77,7 +76,8 @@ static void test_skcipher_cb(struct crypto_async_request *req, int error)
 }
 
 /* Perform cipher operation */
-static unsigned int test_skcipher_encdec(struct skcipher_def *sk,int enc)
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk,
+                     int enc)
 {
     int rc = 0;
 
@@ -108,12 +108,14 @@ static unsigned int test_skcipher_encdec(struct skcipher_def *sk,int enc)
 }
 
 /* Initialize and trigger cipher operation */
-static void encrypt_create(void)
+static int encrypt_create(void)
 {
     struct skcipher_def sk;
     struct crypto_skcipher *skcipher = NULL;
     struct skcipher_request *req = NULL;
+
     char *ivdata = NULL;
+
     int ret = -EFAULT;
 
     skcipher = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
@@ -133,6 +135,7 @@ static void encrypt_create(void)
                       test_skcipher_cb,
                       &sk.result);
 
+    /* AES 256 with random key */
     if (crypto_skcipher_setkey(skcipher, key, SYMMETRIC_KEY_LENGTH)) {
         pr_info("key could not be set\n");
         ret = -EAGAIN;
@@ -145,7 +148,7 @@ static void encrypt_create(void)
         pr_info("could not allocate ivdata\n");
         goto out;
     }
-    get_random_bytes(ivdata, CIPHER_BLOCK_SIZE);
+    strcpy(ivdata,"987654321FEDCBA0");
 
     sk.tfm = skcipher;
     sk.req = req;
@@ -156,12 +159,14 @@ static void encrypt_create(void)
     init_completion(&sk.result.completion);
 
     /* encrypt data */
-    ret = test_skcipher_encdec(&sk, 1);
+    ret = test_skcipher_encdec(&sk, 0);
     if (ret)
         goto out;
 
-    pr_info("Encryption triggered successfully: %x\n", sk->result);
-    out:
+    pr_info("Encryption triggered successfully: %x\n", sk.result.completion);
+    pr_info("Encryption triggered successfully ret: %x\n", ret);
+
+out:
     if (skcipher)
         crypto_free_skcipher(skcipher);
     if (req)
@@ -169,17 +174,6 @@ static void encrypt_create(void)
     if (ivdata)
         kfree(ivdata);
     return ret;
-}
-
-void encrypt_create(void)
-{
-    char *password = key; // Remover C_PASSWORD para key recebida via parametro
-    sk.tfm = NULL;
-    sk.req = NULL;
-    sk.scratchpad = NULL;
-    sk.ciphertext = NULL;
-    sk.ivdata = NULL;
-    test_skcipher_encrypt(message, password, &sk);
 }
 
 // Hash Functions
@@ -254,7 +248,7 @@ static void __exit crypto_exit(void)
     class_unregister(cryptoClass);                      // unregister the device class
     class_destroy(cryptoClass);                         // remove the device class
     unregister_chrdev(majorNumber, DEVICE_NAME);         // unregister the major number
-    test_skcipher_finish(&sk);
+    //test_skcipher_finish(&sk);
     printk(KERN_INFO "CryptoModule: modulo crypto encerrado com sucesso!\n");
 }
 
