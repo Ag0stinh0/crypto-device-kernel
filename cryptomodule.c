@@ -17,18 +17,20 @@
 #define CIPHER_BLOCK_SIZE 16
 
 MODULE_LICENSE("GPL");                                                ///< The license type -- this affects available functionality
-MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                                  ///< The author -- visible when you use modinfo
+MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                ///< The author -- visible when you use modinfo
 MODULE_DESCRIPTION("Modulo de Linux para criptografar uma mensagem"); ///< The description -- see modinfo
 MODULE_VERSION("0.1");
 
 static char *key;
 
-static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[CIPHER_BLOCK_SIZE];             ///< Memory for the string that is passed from userspace (plaintext)
-static short size_of_message;               ///< Used to remember the size of the string stored
-static int numberOpens = 0;                 ///< Counts the number of times the device is opened
-static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
-static struct device *cryptoDevice = NULL; ///< The device-driver device struct pointer
+static int majorNumber;                             ///< Stores the device number -- determined automatically
+///< Memory for the string that is passed from userspace (plaintext)
+static short size_of_message;                       ///< Used to remember the size of the string stored
+static int numberOpens = 0;                         ///< Counts the number of times the device is opened
+static struct class *cryptoClass = NULL;            ///< The device-driver class struct pointer
+static struct device *cryptoDevice = NULL;          ///< The device-driver device struct pointer
+
+char *final;
 
 // Parameters
 module_param(key, charp, 0000);
@@ -177,21 +179,24 @@ out:
 }
 
 // Hash Functions
-static void show_hash(char *hash_text){
+static void show_hash(char *hash_text, char *msg){
     int i;
     char str[HASH_LENGTH * 2 + 1];
 
     for(i = 0; i < HASH_LENGTH; i++)
         sprintf(&str[i*2], "%02x", (unsigned char)hash_text[i]);
     str[i*2] = 0;
-    strcpy(message,str);
-    pr_info("%s\n", str);
+    strcpy(msg,str);
+
+    pr_info("This is the hash message: %s\n", str);
 }
 
-void hash_create(void){
+void hash_create(char *msg){
     char hash_sha256[HASH_LENGTH];
     struct crypto_shash *sha256;
     struct shash_desc *shash;
+
+    pr_info("This is the pre-hash message: %s\n", msg);
 
     sha256 = crypto_alloc_shash("sha256", 0, 0);
 
@@ -205,7 +210,7 @@ void hash_create(void){
     shash->flags = 0;
 
     if( crypto_shash_init(shash) ) return -1;
-    if( crypto_shash_update(shash, message, strlen(message)) ) return -1;
+    if( crypto_shash_update(shash, msg, strlen(msg)) ) return -1;
     if( crypto_shash_final(shash, hash_sha256) ) return -1;
 
     kfree(shash);
@@ -225,9 +230,9 @@ static int __init crypto_init(void)
 
     cryptoClass = class_create(THIS_MODULE, DEVICE_NAME); // Class creation
     if (IS_ERR(cryptoClass)){                // Check for error and clean up if there is
-      unregister_chrdev(majorNumber, DEVICE_NAME);
-      printk(KERN_ALERT "Failed to register device class\n");
-      return PTR_ERR(cryptoClass);          // Correct way to return an error on a pointer
+        unregister_chrdev(majorNumber, DEVICE_NAME);
+        printk(KERN_ALERT "Failed to register device class\n");
+        return PTR_ERR(cryptoClass);          // Correct way to return an error on a pointer
     }
 
     cryptoDevice = device_create(cryptoClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME); // Device Driver creation
@@ -238,7 +243,6 @@ static int __init crypto_init(void)
         return PTR_ERR(cryptoDevice);
     }
 
-    encrypt_create();
     printk(KERN_INFO "CryptoModule: modulo crypto inicializado com a chave: %s.\n", key);
     return 0;
 }
@@ -249,7 +253,6 @@ static void __exit crypto_exit(void)
     class_unregister(cryptoClass);                      // unregister the device class
     class_destroy(cryptoClass);                         // remove the device class
     unregister_chrdev(majorNumber, DEVICE_NAME);         // unregister the major number
-    //test_skcipher_finish(&sk);
     printk(KERN_INFO "CryptoModule: modulo crypto encerrado com sucesso!\n");
 }
 
@@ -260,41 +263,42 @@ static int dev_open(struct inode *inodep, struct file *filep){
 }
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-   int error_count = 0;
-   // copy_to_user has the format ( * to, *from, size) and returns 0 on success
-   error_count = copy_to_user(buffer, message, 256/8);
+    int error_count = 0;
+    // copy_to_user has the format ( * to, *from, size) and returns 0 on success
+    error_count = copy_to_user(buffer, final, size_of_message);
 
-   if (error_count==0){            // if true then have success
-      printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
-      return (size_of_message=0);  // clear the position to the start and return 0
-   }
-   else {
-      printk(KERN_INFO "CryptoModule: Falhou em mandar %d caracteres para o usuario\n", error_count);
-      return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
-   }
+    if (error_count==0){            // if true then have success
+       printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
+       return (size_of_message=0);  // clear the position to the start and return 0
+    }
+    else {
+        printk(KERN_INFO "CryptoModule: Falhou em mandar %d caracteres para o usuario\n", error_count);
+        return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
+    }
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
     char opc = *buffer;
-    char msg = kmalloc(strlen(buffer), GFP_ATOMIC);
+    char *message = kmalloc(strlen(buffer), GFP_ATOMIC);
 
-    size_of_message = strlen(message);  // store the length of the stored message
-    pr_info("%s\n", message);
     switch (opc){
         case 'd':
-
-
             break;
         case 'c':
             break;
         case 'h':
-            strcpy(msg,buffer);
-            strsep(&msg, " ");
-            strcpy(message,msg);
-            hash_create();
+            strcpy(message,buffer);
+            strsep(&message, " ");
+
+            hash_create(message);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
+
             break;
     }
-    hash_create();
+
+    size_of_message = strlen(message);  // store the length of the stored message
     return len;
 }
 
