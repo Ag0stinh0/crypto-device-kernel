@@ -57,7 +57,7 @@ struct tcrypt_result {
     int err;
 };
 
-/* tie all data structures together */
+// Tie all data structures together
 struct skcipher_def {
     struct scatterlist sg;
     struct crypto_skcipher *tfm;
@@ -65,21 +65,21 @@ struct skcipher_def {
     struct tcrypt_result result;
 };
 
-/* Callback function */
+// Callback function
 static void test_skcipher_cb(struct crypto_async_request *req, int error)
 {
     struct tcrypt_result *result = req->data;
+    int i = 13;
 
     if (error == -EINPROGRESS)
         return;
     result->err = error;
     complete(&result->completion);
-    pr_info("Encryption finished successfully\n");
+    pr_info("Encryption finished successfully %i\n", 13);
 }
 
-/* Perform cipher operation */
-static unsigned int test_skcipher_encdec(struct skcipher_def *sk,
-                     int enc)
+// Perform cipher operation
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
 {
     int rc = 0;
 
@@ -100,8 +100,7 @@ static unsigned int test_skcipher_encdec(struct skcipher_def *sk,
             break;
         }
     default:
-        pr_info("skcipher encrypt returned with %d result %d\n",
-            rc, sk->result.err);
+        pr_info("skcipher encrypt returned with %d result %d\n",rc, sk->result.err);
         break;
     }
     init_completion(&sk->result.completion);
@@ -110,17 +109,18 @@ static unsigned int test_skcipher_encdec(struct skcipher_def *sk,
 }
 
 /* Initialize and trigger cipher operation */
-static int encrypt_create(void)
+static int encrypt_create(char *msg, int sel)
 {
     struct skcipher_def sk;
     struct crypto_skcipher *skcipher = NULL;
     struct skcipher_request *req = NULL;
+    char str[256];
 
     char *ivdata = NULL;
 
     int ret = -EFAULT;
 
-    skcipher = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
+    skcipher = crypto_alloc_skcipher("ecb-aes-aesni", 0, 0); //cbc
     if (IS_ERR(skcipher)) {
         pr_info("could not allocate skcipher handle\n");
         return PTR_ERR(skcipher);
@@ -133,9 +133,7 @@ static int encrypt_create(void)
         goto out;
     }
 
-    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,
-                      test_skcipher_cb,
-                      &sk.result);
+    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skcipher_cb,&sk.result);
 
     /* AES 256 with random key */
     if (crypto_skcipher_setkey(skcipher, key, SYMMETRIC_KEY_LENGTH)) {
@@ -161,20 +159,24 @@ static int encrypt_create(void)
     init_completion(&sk.result.completion);
 
     /* encrypt data */
-    ret = test_skcipher_encdec(&sk, 0);
+    ret = test_skcipher_encdec(&sk, sel);
     if (ret)
         goto out;
 
-    pr_info("Encryption triggered successfully: %x\n", sk.result.completion);
-    pr_info("Encryption triggered successfully ret: %x\n", ret);
+    strcpy(msg,sk.result.completion);
+    for(int i = 0; i < strlen(sk.result.completion); i++)
+        sprintf(&str[i*2], "%02x", (unsigned char)sk.result.completion[i]);
 
-out:
+    pr_info("This is the encrypted message: %s\n", str);
+
+    out:
     if (skcipher)
         crypto_free_skcipher(skcipher);
     if (req)
         skcipher_request_free(req);
     if (ivdata)
         kfree(ivdata);
+
     return ret;
 }
 
@@ -280,11 +282,26 @@ static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *of
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
     char opc = *buffer;
     char *message = kmalloc(strlen(buffer), GFP_ATOMIC);
+    int select;
 
     switch (opc){
         case 'd':
+            strcpy(message,buffer);
+            strsep(&message, " ");
+            select = 0;
+            encrypt_create(message, select);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
             break;
         case 'c':
+            strcpy(message,buffer);
+            strsep(&message, " ");
+            select = 1;
+            encrypt_create(message, select);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
             break;
         case 'h':
             strcpy(message,buffer);
@@ -294,7 +311,6 @@ static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, lof
 
             final = kmalloc(64, GFP_ATOMIC);
             strcpy(final, message);
-
             break;
     }
 
