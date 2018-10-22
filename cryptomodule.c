@@ -17,7 +17,7 @@
 #define CIPHER_BLOCK_SIZE 16
 
 MODULE_LICENSE("GPL");                                                ///< The license type -- this affects available functionality
-MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                                  ///< The author -- visible when you use modinfo
+MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                ///< The author -- visible when you use modinfo
 MODULE_DESCRIPTION("Modulo de Linux para criptografar uma mensagem"); ///< The description -- see modinfo
 MODULE_VERSION("0.1");
 
@@ -29,6 +29,8 @@ static short size_of_message;               ///< Used to remember the size of th
 static int numberOpens = 0;                 ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
 static struct device *cryptoDevice = NULL; ///< The device-driver device struct pointer
+
+char *final;
 
 // Parameters
 module_param(key, charp, 0000);
@@ -55,64 +57,29 @@ struct tcrypt_result {
     int err;
 };
 
+// Tie all data structures together
 struct skcipher_def {
     struct scatterlist sg;
-    struct crypto_skcipher * tfm;
-    struct skcipher_request * req;
+    struct crypto_skcipher *tfm;
+    struct skcipher_request *req;
     struct tcrypt_result result;
-    char * scratchpad; // Palavra a ser encriptada
-    char * ciphertext;
-    char * ivdata;
 };
-static struct skcipher_def sk;
 
-// AES Encryption
-static void test_skcipher_finish(struct skcipher_def * sk)
-{
-    if (sk->tfm)
-        crypto_free_skcipher(sk->tfm);
-    if (sk->req)
-        skcipher_request_free(sk->req);
-    if (sk->ivdata)
-        kfree(sk->ivdata);
-    if (sk->scratchpad)
-        kfree(sk->scratchpad);
-    if (sk->ciphertext)
-        kfree(sk->ciphertext);
-}
-
-static int test_skcipher_result(struct skcipher_def * sk, int rc)
-{
-    switch (rc) {
-        case 0:
-            break;
-        case -EINPROGRESS:
-        case -EBUSY:
-            rc = wait_for_completion_interruptible(&sk->result.completion);
-            if (!rc && !sk->result.err) {
-                reinit_completion(&sk->result.completion);
-                break;
-            }
-        default:
-            pr_info("skcipher encrypt returned with %d result %d\n", rc, sk->result.err);
-            break;
-    }
-    init_completion(&sk->result.completion);
-    return rc;
-}
-
-static void test_skcipher_callback(struct crypto_async_request *req, int error)
+// Callback function
+static void test_skcipher_cb(struct crypto_async_request *req, int error)
 {
     struct tcrypt_result *result = req->data;
-    int ret;
+    int i = 13;
+
     if (error == -EINPROGRESS)
-    return;
+        return;
     result->err = error;
     complete(&result->completion);
-    pr_info("Encryption finished successfully\n");
+    pr_info("Encryption finished successfully %i\n", 13);
 }
 
-static int test_skcipher_encrypt(char * plaintext, char * password, struct skcipher_def * sk)
+// Perform cipher operation
+static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
 {
     int ret = -EFAULT;
     unsigned char key[SYMMETRIC_KEY_LENGTH];
@@ -135,7 +102,10 @@ static int test_skcipher_encrypt(char * plaintext, char * password, struct skcip
     test_skcipher_callback,
     &sk->result);
 
-    memset((void*)key,'\0',SYMMETRIC_KEY_LENGTH);
+    if (enc)
+        rc = crypto_skcipher_encrypt(sk->req);
+    else
+        rc = crypto_skcipher_decrypt(sk->req);
 
 
     sprintf((char*)key,"%s",password);
@@ -191,20 +161,24 @@ void encrypt_create(void)
 }
 
 // Hash Functions
-static void show_hash(char *hash_text){
+static void show_hash(char *hash_text, char *msg){
     int i;
     char str[HASH_LENGTH * 2 + 1];
 
     for(i = 0; i < HASH_LENGTH; i++)
         sprintf(&str[i*2], "%02x", (unsigned char)hash_text[i]);
     str[i*2] = 0;
-    pr_info("%s\n", str);
+    strcpy(msg,str);
+
+    pr_info("This is the hash message: %s\n", str);
 }
 
-void hash_create(void){
+void hash_create(char *msg){
     char hash_sha256[HASH_LENGTH];
     struct crypto_shash *sha256;
     struct shash_desc *shash;
+
+    pr_info("This is the pre-hash message: %s\n", msg);
 
     sha256 = crypto_alloc_shash("sha256", 0, 0);
 
@@ -218,13 +192,13 @@ void hash_create(void){
     shash->flags = 0;
 
     if( crypto_shash_init(shash) ) return -1;
-    if( crypto_shash_update(shash, message, strlen(message)) ) return -1;
+    if( crypto_shash_update(shash, msg, strlen(msg)) ) return -1;
     if( crypto_shash_final(shash, hash_sha256) ) return -1;
 
     kfree(shash);
     crypto_free_shash(sha256);
 
-    show_hash(hash_sha256);
+    show_hash(hash_sha256,msg);
 }
 
 // Module init
@@ -238,9 +212,9 @@ static int __init crypto_init(void)
 
     cryptoClass = class_create(THIS_MODULE, DEVICE_NAME); // Class creation
     if (IS_ERR(cryptoClass)){                // Check for error and clean up if there is
-      unregister_chrdev(majorNumber, DEVICE_NAME);
-      printk(KERN_ALERT "Failed to register device class\n");
-      return PTR_ERR(cryptoClass);          // Correct way to return an error on a pointer
+        unregister_chrdev(majorNumber, DEVICE_NAME);
+        printk(KERN_ALERT "Failed to register device class\n");
+        return PTR_ERR(cryptoClass);          // Correct way to return an error on a pointer
     }
 
     cryptoDevice = device_create(cryptoClass, NULL, MKDEV(majorNumber, 0), NULL, DEVICE_NAME); // Device Driver creation
@@ -251,7 +225,6 @@ static int __init crypto_init(void)
         return PTR_ERR(cryptoDevice);
     }
 
-    encrypt_create();
     printk(KERN_INFO "CryptoModule: modulo crypto inicializado com a chave: %s.\n", key);
     return 0;
 }
@@ -262,7 +235,6 @@ static void __exit crypto_exit(void)
     class_unregister(cryptoClass);                      // unregister the device class
     class_destroy(cryptoClass);                         // remove the device class
     unregister_chrdev(majorNumber, DEVICE_NAME);         // unregister the major number
-    test_skcipher_finish(&sk);
     printk(KERN_INFO "CryptoModule: modulo crypto encerrado com sucesso!\n");
 }
 
@@ -273,25 +245,57 @@ static int dev_open(struct inode *inodep, struct file *filep){
 }
 
 static ssize_t dev_read(struct file *filep, char *buffer, size_t len, loff_t *offset){
-   int error_count = 0;
-   // copy_to_user has the format ( * to, *from, size) and returns 0 on success
-   error_count = copy_to_user(buffer, message, size_of_message);
+    int error_count = 0;
+    // copy_to_user has the format ( * to, *from, size) and returns 0 on success
+    error_count = copy_to_user(buffer, final, size_of_message);
 
-   if (error_count==0){            // if true then have success
-      printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
-      return (size_of_message=0);  // clear the position to the start and return 0
-   }
-   else {
-      printk(KERN_INFO "CryptoModule: Falhou em mandar %d caracteres para o usuario\n", error_count);
-      return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
-   }
+    if (error_count==0){            // if true then have success
+       printk(KERN_INFO "CryptoModule: Enviou %d caracteres para o usuario\n", size_of_message);
+       return (size_of_message=0);  // clear the position to the start and return 0
+    }
+    else {
+        printk(KERN_INFO "CryptoModule: Falhou em mandar %d caracteres para o usuario\n", error_count);
+        return -EFAULT;              // Failed -- return a bad address message (i.e. -14)
+    }
 }
 
 static ssize_t dev_write(struct file *filep, const char *buffer, size_t len, loff_t *offset){
-   sprintf(message, "%s(%zu letters)", buffer, len);   // appending received string with its length
-   size_of_message = strlen(message);                 // store the length of the stored message
-   printk(KERN_INFO "CryptoModule: Recebeu %zu caracteres do usuario\n", len);
-   return len;
+    char opc = *buffer;
+    char *message = kmalloc(strlen(buffer), GFP_ATOMIC);
+    int select;
+
+    switch (opc){
+        case 'd':
+            strcpy(message,buffer);
+            strsep(&message, " ");
+            select = 0;
+            encrypt_create(message, select);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
+            break;
+        case 'c':
+            strcpy(message,buffer);
+            strsep(&message, " ");
+            select = 1;
+            encrypt_create(message, select);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
+            break;
+        case 'h':
+            strcpy(message,buffer);
+            strsep(&message, " ");
+
+            hash_create(message);
+
+            final = kmalloc(64, GFP_ATOMIC);
+            strcpy(final, message);
+            break;
+    }
+
+    size_of_message = strlen(message);  // store the length of the stored message
+    return len;
 }
 
 static int dev_release(struct inode *inodep, struct file *filep){
