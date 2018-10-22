@@ -119,6 +119,7 @@ static int encrypt_create(char *msg, int sel)
     char *ivdata = NULL;
 
     int ret = -EFAULT;
+    int i;
 
     skcipher = crypto_alloc_skcipher("ecb-aes-aesni", 0, 0); //cbc
     if (IS_ERR(skcipher)) {
@@ -154,7 +155,7 @@ static int encrypt_create(char *msg, int sel)
     sk.req = req;
 
     /* We encrypt one block */
-    sg_init_one(&sk.sg, message, CIPHER_BLOCK_SIZE);
+    sg_init_one(&sk.sg, msg, CIPHER_BLOCK_SIZE);
     skcipher_request_set_crypt(req, &sk.sg, &sk.sg, CIPHER_BLOCK_SIZE, ivdata);
     init_completion(&sk.result.completion);
 
@@ -163,11 +164,11 @@ static int encrypt_create(char *msg, int sel)
     if (ret)
         goto out;
 
-    strcpy(msg,sk.result.completion);
-    for(int i = 0; i < strlen(sk.result.completion); i++)
-        sprintf(&str[i*2], "%02x", (unsigned char)sk.result.completion[i]);
-
-    pr_info("This is the encrypted message: %s\n", str);
+    /*strcpy(msg,sk.result.completion);
+    for(i = 0; i < strlen(msg); i++)
+        sprintf(&str[i*2], "%02x", (unsigned char)msg[i]);
+*/
+    pr_info("This is the encrypted message: %x\n", sk.result.completion);
 
     out:
     if (skcipher)
@@ -218,7 +219,7 @@ void hash_create(char *msg){
     kfree(shash);
     crypto_free_shash(sha256);
 
-    show_hash(hash_sha256);
+    show_hash(hash_sha256,msg);
 }
 
 // Module init

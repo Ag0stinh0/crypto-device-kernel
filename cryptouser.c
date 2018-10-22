@@ -38,11 +38,23 @@ int main()
         return errno;
     }
 
-    if(*stringToSend == 'c' || *stringToSend == 'h') // ***************************************
+    if(*stringToSend == 'c'){ // ***************************************
+        printf("Your ciphertext: ");
         for(int i = 0; i < strlen(receive); i++)
-            printf("Your ciphertext: %x\n\n", (unsigned char) receive[i]);
-    else
-        printf("Your plaintext: %s\n\n", receive);
+            printf("%x", (unsigned char) receive[i]);
+        printf("\n\n");
+    }
+    else{
+	if(*stringToSend == 'h'){
+	printf("Your ciphertext: %s\n\n", receive);
+	}
+		else{
+        	printf("Your plaintext: ");
+        	for(int i = 0; i < strlen(receive); i++)
+            		printf("%x", (unsigned char) receive[i]);
+        	printf("\n\n");
+		}
+	}
 
     printf("End of Crypto\n");
     return 0;
