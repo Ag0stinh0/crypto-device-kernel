@@ -23,20 +23,11 @@ MODULE_VERSION("0.1");
 
 static char *key;
 
-<<<<<<< HEAD
 static int majorNumber;                             ///< Stores the device number -- determined automatically
 static short size_of_message;                       ///< Used to remember the size of the string stored
 static int numberOpens = 0;                         ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;            ///< The device-driver class struct pointer
 static struct device *cryptoDevice = NULL;          ///< The device-driver device struct pointer
-=======
-static int majorNumber;                     ///< Stores the device number -- determined automatically
-static char message[256 * 2 + 1] = "123321";             ///< Memory for the string that is passed from userspace (plaintext)
-static short size_of_message;               ///< Used to remember the size of the string stored
-static int numberOpens = 0;                 ///< Counts the number of times the device is opened
-static struct class *cryptoClass = NULL;   ///< The device-driver class struct pointer
-static struct device *cryptoDevice = NULL; ///< The device-driver device struct pointer
->>>>>>> dd2d34e2f2addc4fc25ea45c9f134223262d9e89
 
 char *final;
 
@@ -89,83 +80,104 @@ static void test_skcipher_cb(struct crypto_async_request *req, int error)
 // Perform cipher operation
 static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
 {
-    int ret = -EFAULT;
-    unsigned char key[SYMMETRIC_KEY_LENGTH];
-    if (!sk->tfm) {
-        sk->tfm = crypto_alloc_skcipher("cbc-aes-aesni", 0, 0);
-        if (IS_ERR(sk->tfm)) {
-            pr_info("could not allocate skcipher handle\n");
-            return PTR_ERR(sk->tfm);
-        }
-    }
-    if (!sk->req) {
-        sk->req = skcipher_request_alloc(sk->tfm, GFP_KERNEL);
-        if (!sk->req) {
-            pr_info("could not allocate skcipher request\n");
-            ret = -ENOMEM;
-            goto out;
-        }
-    }
-    skcipher_request_set_callback(sk->req, CRYPTO_TFM_REQ_MAY_BACKLOG,
-    test_skcipher_callback,
-    &sk->result);
+    int rc = 0;
 
     if (enc)
         rc = crypto_skcipher_encrypt(sk->req);
     else
         rc = crypto_skcipher_decrypt(sk->req);
 
+    switch (rc) {
+    case 0:
+        break;
+    case -EINPROGRESS:
+    case -EBUSY:
+        rc = wait_for_completion_interruptible(
+            &sk->result.completion);
+        if (!rc && !sk->result.err) {
+            reinit_completion(&sk->result.completion);
+            break;
+        }
+    default:
+        pr_info("skcipher encrypt returned with %d result %d\n",rc, sk->result.err);
+        break;
+    }
+    init_completion(&sk->result.completion);
 
-    sprintf((char*)key,"%s",password);
+    return rc;
+}
 
-    /* AES 256 with given symmetric key */
-    if (crypto_skcipher_setkey(sk->tfm, key, SYMMETRIC_KEY_LENGTH)) {
+/* Initialize and trigger cipher operation */
+static int encrypt_create(char *msg, int sel)
+{
+    struct skcipher_def sk;
+    struct crypto_skcipher *skcipher = NULL;
+    struct skcipher_request *req = NULL;
+    char str[256];
+
+    char *ivdata = NULL;
+
+    int ret = -EFAULT;
+    int i;
+
+    skcipher = crypto_alloc_skcipher("ecb-aes-aesni", 0, 0); //cbc
+    if (IS_ERR(skcipher)) {
+        pr_info("could not allocate skcipher handle\n");
+        return PTR_ERR(skcipher);
+    }
+
+    req = skcipher_request_alloc(skcipher, GFP_KERNEL);
+    if (!req) {
+        pr_info("could not allocate skcipher request\n");
+        ret = -ENOMEM;
+        goto out;
+    }
+
+    skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skcipher_cb,&sk.result);
+
+    /* AES 256 with random key */
+    if (crypto_skcipher_setkey(skcipher, key, SYMMETRIC_KEY_LENGTH)) {
         pr_info("key could not be set\n");
         ret = -EAGAIN;
         goto out;
     }
-    pr_info("Symmetric key: %s\n", key);   //Sujeito a remoção
-    pr_info("Plaintext: %s\n", plaintext); //Sujeito a remoção
-    if (!sk->ivdata) {
 
-        sk->ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->ivdata) {
-            pr_info("could not allocate ivdata\n");
-            goto out;
-        }
-        get_random_bytes(sk->ivdata, CIPHER_BLOCK_SIZE);
+    /* IV will be random */
+    ivdata = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
+    if (!ivdata) {
+        pr_info("could not allocate ivdata\n");
+        goto out;
     }
-    if (!sk->scratchpad) {
-        /* The text to be encrypted */
-        sk->scratchpad = kmalloc(CIPHER_BLOCK_SIZE, GFP_KERNEL);
-        if (!sk->scratchpad) {
-            pr_info("could not allocate scratchpad\n");
-            goto out;
-        }
-    }
-    sprintf((char*)sk->scratchpad,"%s",plaintext);
-    sg_init_one(&sk->sg, sk->scratchpad, CIPHER_BLOCK_SIZE);
-    skcipher_request_set_crypt(sk->req, &sk->sg, &sk->sg,CIPHER_BLOCK_SIZE, sk->ivdata);
-    init_completion(&sk->result.completion);
+    strcpy(ivdata,"987654321FEDCBA0");
+
+    sk.tfm = skcipher;
+    sk.req = req;
+
+    /* We encrypt one block */
+    sg_init_one(&sk.sg, msg, CIPHER_BLOCK_SIZE);
+    skcipher_request_set_crypt(req, &sk.sg, &sk.sg, CIPHER_BLOCK_SIZE, ivdata);
+    init_completion(&sk.result.completion);
+
     /* encrypt data */
-    ret = crypto_skcipher_encrypt(sk->req);
-    ret = test_skcipher_result(sk, ret);
+    ret = test_skcipher_encdec(&sk, sel);
     if (ret)
         goto out;
-    pr_info("Encryption request successful: %x\n",&ret);
-    out:
-    return ret;
-}
 
-void encrypt_create(void)
-{
-    char *password = key; // Remover C_PASSWORD para key recebida via parametro
-    sk.tfm = NULL;
-    sk.req = NULL;
-    sk.scratchpad = NULL;
-    sk.ciphertext = NULL;
-    sk.ivdata = NULL;
-    test_skcipher_encrypt(message, password, &sk);
+    /*strcpy(msg,sk.result.completion);
+    for(i = 0; i < strlen(msg); i++)
+        sprintf(&str[i*2], "%02x", (unsigned char)msg[i]);
+*/
+    pr_info("This is the encrypted message: %x\n", sk.result.completion);
+
+    out:
+    if (skcipher)
+        crypto_free_skcipher(skcipher);
+    if (req)
+        skcipher_request_free(req);
+    if (ivdata)
+        kfree(ivdata);
+
+    return ret;
 }
 
 // Hash Functions
