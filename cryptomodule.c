@@ -24,7 +24,6 @@ MODULE_VERSION("0.1");
 static char *key;
 
 static int majorNumber;                             ///< Stores the device number -- determined automatically
-///< Memory for the string that is passed from userspace (plaintext)
 static short size_of_message;                       ///< Used to remember the size of the string stored
 static int numberOpens = 0;                         ///< Counts the number of times the device is opened
 static struct class *cryptoClass = NULL;            ///< The device-driver class struct pointer
