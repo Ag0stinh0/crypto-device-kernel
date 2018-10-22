@@ -18,7 +18,7 @@
 
 MODULE_LICENSE("GPL");                                                ///< The license type -- this affects available functionality
 MODULE_AUTHOR("Evandro Agostinho Pedro Lucas Brunno");                ///< The author -- visible when you use modinfo
-MODULE_DESCRIPTION("Modulo de Linux para criptografar uma mensagem"); ///< The description -- see modinfo
+MODULE_DESCRIPTION("Modulo de Linux para criptografar uma mensagem."); ///< The description -- see modinfo
 MODULE_VERSION("0.1");
 
 static char *key;

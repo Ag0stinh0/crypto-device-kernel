@@ -52,7 +52,7 @@ int main()
         	printf("Your plaintext: ");
         	for(int i = 0; i < strlen(receive); i++)
             		printf("%x", (unsigned char) receive[i]);
-        	printf("\n\n");
+        	printf(" \n\n");
 		}
 	}
 
