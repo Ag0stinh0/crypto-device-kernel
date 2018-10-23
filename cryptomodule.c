@@ -78,6 +78,7 @@ static void test_skcipher_cb(struct crypto_async_request *req, int error)
 }
 
 // Perform cipher operation
+/*
 static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
 {
     int rc = 0;
@@ -105,7 +106,7 @@ static unsigned int test_skcipher_encdec(struct skcipher_def *sk, int enc)
     init_completion(&sk->result.completion);
 
     return rc;
-}
+}*/
 
 /* Initialize and trigger cipher operation */
 static int encrypt_create(char *msg, int sel)
@@ -120,13 +121,15 @@ static int encrypt_create(char *msg, int sel)
     int ret = -EFAULT;
     int i;
 
-    skcipher = crypto_alloc_skcipher("ecb-aes-aesni", 0, 0); //cbc
-    if (IS_ERR(skcipher)) {
-        pr_info("could not allocate skcipher handle\n");
-        return PTR_ERR(skcipher);
-    }
+    struct crypto_cipher *cipher = NULL; 
 
-    req = skcipher_request_alloc(skcipher, GFP_KERNEL);
+    cipher = crypto_alloc_cipher("ecb-aes-aesni", 0, 0); //cbc
+    if (IS_ERR(cipher)) {
+        pr_info("could not allocate skcipher handle\n");
+        return PTR_ERR(cipher);
+    }
+/*
+    req = cipher_request_alloc(cipher, GFP_KERNEL);
     if (!req) {
         pr_info("could not allocate skcipher request\n");
         ret = -ENOMEM;
@@ -134,9 +137,9 @@ static int encrypt_create(char *msg, int sel)
     }
 
     skcipher_request_set_callback(req, CRYPTO_TFM_REQ_MAY_BACKLOG,test_skcipher_cb,&sk.result);
-
+*/
     /* AES 256 with random key */
-    if (crypto_skcipher_setkey(skcipher, key, SYMMETRIC_KEY_LENGTH)) {
+    if (crypto_cipher_setkey(cipher, key, SYMMETRIC_KEY_LENGTH)) {
         pr_info("key could not be set\n");
         ret = -EAGAIN;
         goto out;
@@ -150,7 +153,7 @@ static int encrypt_create(char *msg, int sel)
     }
     get_random_bytes(ivdata, CIPHER_BLOCK_SIZE);
 
-    sk.tfm = skcipher;
+    
     sk.req = req;
 
     /* We encrypt one block */
@@ -159,15 +162,21 @@ static int encrypt_create(char *msg, int sel)
     init_completion(&sk.result.completion);
 
     /* encrypt data */
-    ret = test_skcipher_encdec(&sk, sel);
+    /*ret = test_skcipher_encdec(&sk, sel);
+    
     if (ret)
-        goto out;
+        goto out;*/
 
-    /*strcpy(msg,sk.result.completion);
-    for(i = 0; i < strlen(msg); i++)
-        sprintf(&str[i*2], "%02x", (unsigned char)msg[i]);
-*/
-    pr_info("This is the encrypted message: %x\n", sk.result.completion);
+    if(sel)
+    crypto_cipher_encrypt_one(cipher, msg, msg);
+    else
+    crypto_cipher_decrypt_one(cipher, msg, msg);
+
+    //strcpy(msg,sk.result.completion);
+    //for(i = 0; i < strlen(msg); i++)
+       // sprintf(msg, "%s", (unsigned char)sk.result.completion);
+
+    //pr_info("This is the encrypted message: %x\n", sk.result.completion);
 
     out:
     if (skcipher)
