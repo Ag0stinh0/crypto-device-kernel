@@ -148,7 +148,7 @@ static int encrypt_create(char *msg, int sel)
         pr_info("could not allocate ivdata\n");
         goto out;
     }
-    strcpy(ivdata,"987654321FEDCBA0");
+    get_random_bytes(ivdata, CIPHER_BLOCK_SIZE);
 
     sk.tfm = skcipher;
     sk.req = req;
